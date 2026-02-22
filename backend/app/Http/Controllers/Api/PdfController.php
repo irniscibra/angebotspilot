@@ -12,22 +12,21 @@ class PdfController extends Controller
 {
     public function generate(Request $request, Quote $quote)
     {
-        if ($quote->company_id !== $request->user()->company_id) {
-            abort(403);
-        }
+      if ($quote->company_id !== $request->user()->company_id) {
+        abort(403);
+    }
 
-        $quote->load(['company', 'customer', 'items', 'creator']);
+    $quote->load(['company', 'customer', 'items']);
 
-        // Positionen gruppieren
-        $groupedItems = $quote->items->groupBy('group_name');
+    $groupedItems = $quote->items->groupBy('group_name');
 
-        $data = [
-            'quote' => $quote,
-            'company' => $quote->company,
-            'customer' => $quote->customer,
-            'groupedItems' => $groupedItems,
-            'creator' => $quote->creator,
-        ];
+$data = [
+    'quote' => $quote,
+    'company' => $quote->company,
+    'customer' => $quote->customer,
+    'groupedItems' => $groupedItems,
+    'creator' => $quote->creator ?? $request->user(),
+];
 
         $pdf = Pdf::loadView('pdf.quote', $data);
         $pdf->setPaper('a4', 'portrait');

@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\CustomerController;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\CompanyController;
 use App\Http\Controllers\Api\MaterialController;
+use App\Http\Controllers\Api\PdfController;
 
 /*
 |--------------------------------------------------------------------------
@@ -50,6 +51,10 @@ Route::delete('company/logo', [CompanyController::class, 'removeLogo']);
 
 // Materialien
 Route::apiResource('materials', MaterialController::class);
+
+// PDF-Generierung^
+Route::get('quotes/{quote}/pdf', [PdfController::class, 'generate']);
+Route::get('quotes/{quote}/pdf/preview', [PdfController::class, 'preview']);
 
     // Dashboard Stats
     Route::get('dashboard/stats', function (\Illuminate\Http\Request $request) {
