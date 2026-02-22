@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\CompanyController;
 use App\Http\Controllers\Api\MaterialController;
 use App\Http\Controllers\Api\PdfController;
+use App\Http\Controllers\Api\DatanormController;
 
 /*
 |--------------------------------------------------------------------------
@@ -51,6 +52,15 @@ Route::delete('company/logo', [CompanyController::class, 'removeLogo']);
 
 // Materialien
 Route::apiResource('materials', MaterialController::class);
+
+// Datanorm Import
+Route::prefix('datanorm')->group(function () {
+    Route::get('/', [DatanormController::class, 'index']);
+    Route::post('/preview', [DatanormController::class, 'preview']);
+    Route::post('/import', [DatanormController::class, 'import']);
+    Route::get('/{datanormImport}', [DatanormController::class, 'show']);
+    Route::delete('/{datanormImport}', [DatanormController::class, 'destroy']);
+});
 
 // PDF-Generierung^
 Route::get('quotes/{quote}/pdf', [PdfController::class, 'generate']);
