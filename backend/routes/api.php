@@ -8,7 +8,7 @@ use App\Http\Controllers\Api\CompanyController;
 use App\Http\Controllers\Api\MaterialController;
 use App\Http\Controllers\Api\PdfController;
 use App\Http\Controllers\Api\DatanormController;
-
+use App\Http\Controllers\Api\ServiceTemplateController;
 /*
 |--------------------------------------------------------------------------
 | API Routes – AngebotsPilot
@@ -50,6 +50,9 @@ Route::put('company', [CompanyController::class, 'update']);
 Route::post('company/logo', [CompanyController::class, 'uploadLogo']);
 Route::delete('company/logo', [CompanyController::class, 'removeLogo']);
 
+// Materialsuche (Autocomplete)
+Route::get('/materials/search', [MaterialController::class, 'search']);
+
 // Materialien
 Route::apiResource('materials', MaterialController::class);
 
@@ -60,6 +63,17 @@ Route::prefix('datanorm')->group(function () {
     Route::post('/import', [DatanormController::class, 'import']);
     Route::get('/{datanormImport}', [DatanormController::class, 'show']);
     Route::delete('/{datanormImport}', [DatanormController::class, 'destroy']);
+});
+
+//template ServiceTemplate
+Route::prefix('service-templates')->group(function () {
+    Route::get('/', [ServiceTemplateController::class, 'index']);
+    Route::post('/', [ServiceTemplateController::class, 'store']);
+    Route::get('/{serviceTemplate}', [ServiceTemplateController::class, 'show']);
+    Route::put('/{serviceTemplate}', [ServiceTemplateController::class, 'update']);
+    Route::delete('/{serviceTemplate}', [ServiceTemplateController::class, 'destroy']);
+    Route::post('/from-quote/{quote}', [ServiceTemplateController::class, 'createFromQuote']);
+    Route::post('/{serviceTemplate}/apply/{quote}', [ServiceTemplateController::class, 'applyToQuote']);
 });
 
 // PDF-Generierung^

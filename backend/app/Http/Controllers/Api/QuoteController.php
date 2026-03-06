@@ -182,6 +182,7 @@ class QuoteController extends Controller
             'quantity' => 'required|numeric|min:0',
             'unit' => 'required|string|max:20',
             'unit_price' => 'required|numeric|min:0',
+            'material_id' => 'nullable|exists:materials,id',
         ]);
 
         $lastPosition = $quote->items()->max('position_number') ?? 0;
@@ -198,6 +199,7 @@ class QuoteController extends Controller
             'unit_price' => $request->unit_price,
             'is_ai_generated' => false,
             'sort_order' => $lastPosition + 1,
+            'material_id' => $request->material_id,
         ]);
 
         return response()->json($item, 201);

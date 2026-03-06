@@ -3,25 +3,29 @@
 namespace App\Services;
 
 use App\Models\Company;
+use App\Models\Material;
 use App\Models\Quote;
 use App\Models\QuoteItem;
 use App\Models\AiUsageLog;
 use Illuminate\Support\Facades\Log;
-use OpenAI;
+use OpenAI\Laravel\Facades\OpenAI;
 
 class QuoteAIService
 {
     /**
      * Generiert ein Angebot aus einer Projektbeschreibung.
+     * Nutzt den Materialkatalog des Unternehmens für echte Preise.
      */
     public function generateQuote(Quote $quote, string $description): array
     {
         $company = $quote->company;
 
-        $systemPrompt = $this->buildSystemPrompt($company);
+        // Materialkatalog laden für echte Preise
+        $catalogContext = $this->buildCatalogContext($company);
 
-        $client = OpenAI::client(env('OPENAI_API_KEY'));
-        $response = $client->chat()->create([
+        $systemPrompt = $this->buildSystemPrompt($company, $catalogContext);
+
+        $response = OpenAI::chat()->create([
             'model' => 'gpt-4o',
             'messages' => [
                 ['role' => 'system', 'content' => $systemPrompt],
@@ -64,8 +68,8 @@ class QuoteAIService
             'ai_tokens_used' => $usage->totalTokens,
         ]);
 
-        // Positionen erstellen
-        $this->createQuoteItems($quote, $aiResult['groups']);
+        // Positionen erstellen – mit Katalog-Matching
+        $this->createQuoteItems($quote, $aiResult['groups'], $company);
 
         // Angebot neu kalkulieren
         $quote->recalculate();
@@ -74,12 +78,69 @@ class QuoteAIService
     }
 
     /**
-     * Baut den System-Prompt mit Firmendaten.
+     * Baut den Materialkatalog-Kontext für den Prompt.
+     * Gibt die relevanten Materialien als formatierten String zurück.
      */
-    private function buildSystemPrompt(Company $company): string
+    private function buildCatalogContext(Company $company): string
+    {
+        $materials = Material::where('company_id', $company->id)
+            ->where('is_active', true)
+            ->orderBy('category')
+            ->orderBy('name')
+            ->get(['id', 'name', 'category', 'sku', 'unit', 'selling_price', 'supplier', 'datanorm_article_number']);
+
+        if ($materials->isEmpty()) {
+            return '';
+        }
+
+        $lines = [];
+        $currentCategory = '';
+
+        foreach ($materials as $mat) {
+            if ($mat->category !== $currentCategory) {
+                $currentCategory = $mat->category;
+                $lines[] = "\n[{$currentCategory}]";
+            }
+
+            $sku = $mat->datanorm_article_number ?: $mat->sku;
+            $price = number_format((float)$mat->selling_price, 2, '.', '');
+            $lines[] = "- Art.{$sku}: {$mat->name} | {$mat->unit} | {$price} EUR" .
+                       ($mat->supplier ? " | {$mat->supplier}" : '');
+        }
+
+        // Auf max. ~3000 Zeichen begrenzen (damit Prompt nicht zu lang wird)
+        $catalog = implode("\n", $lines);
+        if (strlen($catalog) > 3000) {
+            $catalog = substr($catalog, 0, 3000) . "\n... (weitere Artikel verfügbar)";
+        }
+
+        return $catalog;
+    }
+
+    /**
+     * Baut den System-Prompt mit Firmendaten und Materialkatalog.
+     */
+    private function buildSystemPrompt(Company $company, string $catalogContext): string
     {
         $hourlyRate = number_format($company->default_hourly_rate, 2, '.', '');
         $vatRate = number_format($company->default_vat_rate, 2, '.', '');
+
+        // Katalog-Abschnitt nur wenn Materialien vorhanden
+        $catalogSection = '';
+        if (!empty($catalogContext)) {
+            $catalogSection = <<<CATALOG
+
+MATERIALKATALOG DES BETRIEBS (echte Einkaufspreise – BEVORZUGT verwenden!):
+{$catalogContext}
+
+WICHTIG ZUM KATALOG:
+- Verwende IMMER Materialien aus dem Katalog wenn passende vorhanden sind!
+- Nutze die exakten Preise aus dem Katalog – das sind die echten Verkaufspreise des Betriebs.
+- Gib bei Katalog-Materialien die Artikelnummer im "sku"-Feld zurück.
+- Nur wenn kein passendes Material im Katalog ist, schätze den Marktpreis.
+- Kennzeichne Katalog-Materialien mit "from_catalog": true
+CATALOG;
+        }
 
         return <<<PROMPT
 Du bist ein erfahrener SHK-Meister (Sanitär, Heizung, Klima) und Kalkulator in Deutschland.
@@ -89,6 +150,7 @@ FIRMENDATEN:
 - Standard-Stundensatz Monteur: {$hourlyRate} EUR/Std (netto)
 - MwSt-Satz: {$vatRate}%
 - Standort: Deutschland
+{$catalogSection}
 
 REGELN FÜR DIE KALKULATION:
 1. Gliedere das Angebot in logische Gewerke-Gruppen (z.B. "Demontage & Entsorgung", "Sanitärinstallation", "Rohrleitungen", "Heizungsarbeiten", etc.)
@@ -101,7 +163,7 @@ REGELN FÜR DIE KALKULATION:
 8. Bei Heizungsarbeiten: EnEV/GEG Normen berücksichtigen
 9. Bei Sanitärarbeiten: DIN und DVGW Normen berücksichtigen
 
-MATERIALPREISE (Richtwerte netto, inkl. Handwerker-Aufschlag):
+MATERIALPREISE (Richtwerte netto – NUR verwenden wenn KEIN Katalog-Artikel passt):
 - Kupferrohr 15mm: 10-15 EUR/m
 - Kupferrohr 22mm: 15-20 EUR/m
 - Verbundrohr 16mm: 5-8 EUR/m
@@ -135,7 +197,9 @@ ANTWORTE AUSSCHLIESSLICH als valides JSON in exakt diesem Format:
                     "description": "Kurze Beschreibung oder Spezifikation",
                     "quantity": 1.0,
                     "unit": "Stück",
-                    "unit_price": 0.00
+                    "unit_price": 0.00,
+                    "sku": "Artikelnummer falls aus Katalog, sonst leer",
+                    "from_catalog": true
                 },
                 {
                     "type": "labor",
@@ -143,7 +207,9 @@ ANTWORTE AUSSCHLIESSLICH als valides JSON in exakt diesem Format:
                     "description": "Was wird gemacht",
                     "quantity": 2.0,
                     "unit": "Std",
-                    "unit_price": {$hourlyRate}
+                    "unit_price": {$hourlyRate},
+                    "sku": "",
+                    "from_catalog": false
                 }
             ]
         }
@@ -158,22 +224,44 @@ WICHTIG:
 - Jede Position muss "type" haben: "material" oder "labor"
 - Gruppen nummerieren: "1. ...", "2. ...", etc.
 - Mindestens 2 Gruppen, realistisch detailliert
+- Bei jedem Material "sku" und "from_catalog" angeben
 PROMPT;
     }
 
     /**
      * Erstellt QuoteItems aus der KI-Antwort.
+     * Matcht KI-Vorschläge mit echten Katalog-Materialien.
      */
-    private function createQuoteItems(Quote $quote, array $groups): void
+    private function createQuoteItems(Quote $quote, array $groups, Company $company): void
     {
         // Bestehende Positionen löschen (bei Regenerierung)
         $quote->items()->delete();
+
+        // Katalog-Materialien für Matching laden
+        $catalogMaterials = Material::where('company_id', $company->id)
+            ->where('is_active', true)
+            ->get()
+            ->keyBy(function ($m) {
+                return $m->datanorm_article_number ?: $m->sku;
+            });
 
         $position = 1;
         $sortOrder = 0;
 
         foreach ($groups as $group) {
             foreach ($group['items'] as $item) {
+                $unitPrice = $item['unit_price'] ?? 0;
+                $materialId = null;
+
+                // Versuche Katalog-Match über SKU
+                $sku = $item['sku'] ?? '';
+                if (!empty($sku) && $catalogMaterials->has($sku)) {
+                    $catalogMat = $catalogMaterials->get($sku);
+                    // Echten Preis aus Katalog verwenden
+                    $unitPrice = (float) $catalogMat->selling_price;
+                    $materialId = $catalogMat->id;
+                }
+
                 QuoteItem::create([
                     'quote_id' => $quote->id,
                     'position_number' => $position++,
@@ -183,10 +271,11 @@ PROMPT;
                     'description' => $item['description'] ?? null,
                     'quantity' => $item['quantity'] ?? 1,
                     'unit' => $item['unit'] ?? 'Stück',
-                    'unit_price' => $item['unit_price'] ?? 0,
-                    'total_price' => ($item['quantity'] ?? 1) * ($item['unit_price'] ?? 0),
+                    'unit_price' => $unitPrice,
+                    'total_price' => ($item['quantity'] ?? 1) * $unitPrice,
                     'is_ai_generated' => true,
                     'sort_order' => $sortOrder++,
+                    'material_id' => $materialId,
                 ]);
             }
         }

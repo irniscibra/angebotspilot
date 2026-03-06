@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Str;
+use App\Models\ServiceTemplate;
 
 class Company extends Model
 {
@@ -81,6 +82,11 @@ class Company extends Model
     public function quotes()
     {
         return $this->hasMany(Quote::class);
+    }
+
+    public function serviceTemplates()
+    {
+        return $this->hasMany(ServiceTemplate::class);
     }
 
     // ---- Business Logic ----

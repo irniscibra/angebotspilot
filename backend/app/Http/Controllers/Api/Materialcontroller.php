@@ -22,7 +22,8 @@ class MaterialController extends Controller
             $query->where(function ($q) use ($search) {
                 $q->where('name', 'like', "%{$search}%")
                   ->orWhere('category', 'like', "%{$search}%")
-                  ->orWhere('sku', 'like', "%{$search}%");
+                  ->orWhere('sku', 'like', "%{$search}%")
+                  ->orWhere('datanorm_article_number', 'like', "%{$search}%");
             });
         }
 
@@ -44,6 +45,40 @@ class MaterialController extends Controller
             'materials' => $materials,
             'categories' => $categories,
         ]);
+    }
+
+    /**
+     * Schnelle Materialsuche für Autocomplete in der Positionserfassung.
+     * Gibt max 20 Ergebnisse zurück mit den wichtigsten Feldern.
+     */
+    public function search(Request $request): JsonResponse
+    {
+        $request->validate([
+            'q' => 'required|string|min:1|max:100',
+        ]);
+
+        $search = $request->q;
+
+        $materials = $request->user()->company->materials()
+            ->where('is_active', true)
+            ->where(function ($q) use ($search) {
+                $q->where('name', 'like', "%{$search}%")
+                  ->orWhere('sku', 'like', "%{$search}%")
+                  ->orWhere('datanorm_article_number', 'like', "%{$search}%")
+                  ->orWhere('category', 'like', "%{$search}%")
+                  ->orWhere('supplier', 'like', "%{$search}%")
+                  ->orWhere('ean', 'like', "%{$search}%");
+            })
+            ->select([
+                'id', 'name', 'description', 'category', 'sku', 'unit',
+                'purchase_price', 'selling_price', 'supplier',
+                'datanorm_article_number', 'source',
+            ])
+            ->orderByRaw("CASE WHEN name LIKE ? THEN 0 ELSE 1 END", ["{$search}%"])
+            ->limit(20)
+            ->get();
+
+        return response()->json($materials);
     }
 
     public function store(Request $request): JsonResponse
