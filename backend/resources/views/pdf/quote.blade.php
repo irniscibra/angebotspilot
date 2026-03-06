@@ -353,6 +353,11 @@
     <div class="header">
         <div class="header-table">
             <div class="header-left">
+                  @if($company->logo_path)
+            <div style="margin-bottom: 10px;">
+                <img src="{{ public_path('storage/' . $company->logo_path) }}" alt="Logo" style="max-height: 60px; max-width: 220px;">
+            </div>
+        @endif
                 <div class="company-name">{{ $company->name }}</div>
                 <div class="company-subtitle">Sanitär · Heizung · Klimatechnik</div>
             </div>

@@ -9,6 +9,7 @@ use App\Http\Controllers\Api\MaterialController;
 use App\Http\Controllers\Api\PdfController;
 use App\Http\Controllers\Api\DatanormController;
 use App\Http\Controllers\Api\ServiceTemplateController;
+use App\Http\Controllers\Api\AcceptanceProtocolController;
 /*
 |--------------------------------------------------------------------------
 | API Routes – AngebotsPilot
@@ -63,6 +64,17 @@ Route::prefix('datanorm')->group(function () {
     Route::post('/import', [DatanormController::class, 'import']);
     Route::get('/{datanormImport}', [DatanormController::class, 'show']);
     Route::delete('/{datanormImport}', [DatanormController::class, 'destroy']);
+});
+
+//bauprotokolle
+Route::prefix('acceptance-protocols')->group(function () {
+    Route::get('/', [AcceptanceProtocolController::class, 'index']);
+    Route::post('/', [AcceptanceProtocolController::class, 'store']);
+    Route::get('/{protocol}', [AcceptanceProtocolController::class, 'show']);
+    Route::put('/{protocol}', [AcceptanceProtocolController::class, 'update']);
+    Route::delete('/{protocol}', [AcceptanceProtocolController::class, 'destroy']);
+    Route::post('/{protocol}/sign', [AcceptanceProtocolController::class, 'sign']);
+    Route::get('/{protocol}/pdf', [PdfController::class, 'acceptanceProtocol']);
 });
 
 //template ServiceTemplate

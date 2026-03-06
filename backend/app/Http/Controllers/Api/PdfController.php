@@ -7,6 +7,7 @@ use App\Models\Quote;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
+use App\Models\AcceptanceProtocol;
 
 class PdfController extends Controller
 {
@@ -69,4 +70,22 @@ $data = [
 
         return $pdf->stream($quote->quote_number . '.pdf');
     }
+
+    public function acceptanceProtocol(Request $request, AcceptanceProtocol  $protocol)
+{
+    if ($protocol->company_id !== $request->user()->company_id) {
+        abort(403);
+    }
+
+    $protocol->load(['quote.items', 'quote.customer', 'creator']);
+    $protocol->makeVisible(['signature_contractor', 'signature_client']);
+    $company = $protocol->company;
+
+    $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('pdf.acceptance-protocol', [
+        'protocol' => $protocol,
+        'company' => $company,
+    ]);
+
+    return $pdf->download("Abnahmeprotokoll-{$protocol->protocol_number}.pdf");
+}
 }
